@@ -141,7 +141,7 @@ class ExperimentCorrelationAttack(Experiment):
     def permuted_model_validation_set_accuracy(self):
         adopted_instance = LTFArray(
             weight_array=self.learner.permuted_model.weight_array[:, :-1],
-            transform=LTFArray.transform_none,  # note that we're using validation_set_fast below
+            transform=LTFArray._transform_none,  # note that we're using validation_set_fast below
             combiner=LTFArray.combiner_xor,
             bias=self.learner.permuted_model.weight_array[:, -1:]
         )
