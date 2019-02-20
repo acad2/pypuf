@@ -89,19 +89,6 @@ class InputTransformExperiment(Experiment):
     def analyze(self):
         """Analyze the learned model"""
         assert self.model is not None
-        transform = 'unknown'
-        if self.transform == LTFArray.transform_id:
-            transform = 'id'
-        if self.transform == LTFArray.transform_atf:
-            transform = 'atf'
-        if self.transform == LTFArray.transform_aes_substitution:
-            transform = 'aes'
-        if self.transform == LTFArray.transform_lightweight_secure_original:
-            transform = 'lw_secure'
-        if self.transform == LTFArray.transform_fixed_permutation:
-            transform = 'fixed_permutation'
-        if self.transform == LTFArray.transform_random:
-            transform = 'random'
         distance = 1.0 - tools.approx_dist(self.instance, self.model, min(1000, 2 ** self.n), self.prng_c)
         self.result_logger.info(
             '0x%x\t0x%x\t%i\t%i\t%i\t%f\t%s\t%s\t%s\t%s\t%s',
@@ -113,8 +100,8 @@ class InputTransformExperiment(Experiment):
             max(distance, 1 - distance),
             ','.join(map(str, self.individual_accs())),
             self.measured_time,
-            transform,
-            str(self.combiner),
+            self.transform.__name__,
+            self.combiner.__name__,
             ','.join(map(str, self.model.weight_array.flatten() / np.linalg.norm(self.model.weight_array.flatten()))),
         )
 

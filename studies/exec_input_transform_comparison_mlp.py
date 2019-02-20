@@ -2,7 +2,7 @@ from numpy.random import RandomState
 from sys import argv, stderr
 import json
 
-from pypuf.experiments.experiment.input_transform_experiment import InputTransformExperiment
+from pypuf.experiments.mlp import ExperimentMLP
 from pypuf.experiments.experimenter import Experimenter
 from pypuf.simulation.arbiter_based.ltfarray import LTFArray
 
@@ -37,8 +37,12 @@ def main(args):
     # Use or initialize optional parameters
     repeat = 1
     suffix = ''
-    seed_i = RandomState().randint(2**32)
-    seed_c = RandomState().randint(2**32)
+    seed_i = RandomState().randint(2 ** 32)
+    seed_c = RandomState().randint(2 ** 32)
+    seed_m = RandomState().randint(2 ** 32)
+    seed_a = RandomState().randint(2 ** 32)
+    batch_size = 1000
+    iteration_limit = 1000
     if len(args) >= 7:
         repeat = int(args[6])
         if len(args) >= 8:
@@ -47,6 +51,14 @@ def main(args):
                 seed_i = int(args[8])
                 if len(args) >= 10:
                     seed_c = int(args[9])
+                    if len(args) >= 11:
+                        seed_m = int(args[10])
+                        if len(args) >= 12:
+                            seed_a = int(args[11])
+                            if len(args) >= 13:
+                                batch_size = int(args[12])
+                                if len(args) >= 14:
+                                    iteration_limit = int(args[13])
 
     stderr.write('Following parameters are used:\n')
     stderr.write(str(argv[1:]))
@@ -57,7 +69,7 @@ def main(args):
 
     experiments = list()
 
-    log_name = 'trafos_k%i_n%i' % (k, n) + suffix
+    log_name = 'trafos_mlp_k%i_n%i' % (k, n) + suffix
     params = list()
     for i in range(start, end, step):
         params.append([k, n, LTFArray.transform_id, LTFArray.combiner_xor, i])
@@ -70,15 +82,19 @@ def main(args):
 
     for i in range(len(params)):
         for j in range(repeat):
-            experiment = InputTransformExperiment(
+            experiment = ExperimentMLP(
                 log_name=log_name + '_%i' % i,
-                k=params[i][0],
                 n=params[i][1],
-                transform=params[i][2],
+                k=params[i][0],
+                N=params[i][4],
+                seed_simulation=RandomState((seed_i + i*repeat + j) % 2 ** 32).randint(2 ** 32),
+                seed_model=RandomState((seed_m + i*repeat + j) % 2 ** 32).randint(2 ** 32),
+                transformation=params[i][2],
                 combiner=params[i][3],
-                num=params[i][4],
-                seed_instance=RandomState((seed_i + j) % 2**32).randint(2**32),
-                seed_challenges=RandomState((seed_c + j) % 2**32).randint(2**32)
+                seed_challenge=RandomState((seed_c + i*repeat + j) % 2 ** 32).randint(2 ** 32),
+                seed_accuracy=RandomState((seed_a + i*repeat + j) % 2 ** 32).randint(2 ** 32),
+                batch_size=batch_size,
+                iteration_limit=iteration_limit,
             )
             experiments.append(experiment)
 

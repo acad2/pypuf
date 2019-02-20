@@ -138,7 +138,7 @@ class Experimenter(object):
 def setup_logger(logger_name):
     """
     This method is used to open the file handler for a logger_name. The resulting log file will have the format
-    'logger_namer.log'.
+    'logger_name.log'.
     :param logger_name: string
                         Path to or name to the log file
     """
