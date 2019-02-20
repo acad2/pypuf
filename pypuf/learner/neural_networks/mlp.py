@@ -1,4 +1,4 @@
-from numpy import reshape
+from numpy import reshape, sign
 import os
 from keras.models import Sequential
 from keras.layers import Dense
@@ -64,7 +64,7 @@ class MultiLayerPerceptron(Learner):
             def eval(self, cs):
                 if self.transformation is not None:
                     cs = reshape(self.transformation(cs, self.k), (len(cs), self.k * self.n))
-                return self.clf.predict(cs)
+                return sign(self.clf.predict(cs)[:, 0])
 
         self.model = Model(self.clf, self.n, self.k, self.transformation)
 
