@@ -15,18 +15,17 @@ class ExperimentMLP(Experiment):
 
     def __init__(self, log_name, N, n, k, transformation, combiner, preprocess, batch_size=1000, iteration_limit=1000,
                  seed_simulation=None, seed_challenges=None, seed_model=None, seed_accuracy=None):
-        super().__init__(
-            progress_log_name='{0}_MLP_0x{1}_0x{2}_0_{3}_{4}_{5}_{6}_{7}'.format(
-                log_name,
-                seed_model,
-                seed_simulation,
-                n,
-                k,
-                N,
-                transformation.__name__,
-                combiner.__name__,
-            ),
-        )
+        progress_log_name = '{0}_MLP_0x{1}_0x{2}_0_{3}_{4}_{5}_{6}_{7}'.format(
+            log_name,
+            seed_model,
+            seed_simulation,
+            n,
+            k,
+            N,
+            transformation.__name__,
+            combiner.__name__,
+        ) if log_name else None
+        super().__init__(progress_log_name)
         self.N = N
         self.n = n
         self.k = k

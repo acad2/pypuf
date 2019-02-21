@@ -37,7 +37,7 @@ for k, n, (min_CRPs, max_CRPs), preprocess, seed_i, seed_c, seed_m, seed_a in de
     for s in range(SAMPLES_PER_POINT):
         for p in range(len(parameters)):
             experiment = ExperimentMLP(
-                log_name=log_name + '_{0}'.format(p),
+                log_name=None,
                 N=parameters[p][4],
                 n=parameters[p][1],
                 k=parameters[p][0],
