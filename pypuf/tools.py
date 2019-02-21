@@ -4,7 +4,8 @@ or polynomial division. The spectrum is rich and the functions are used in many 
 helper module.
 """
 import itertools
-from numpy import count_nonzero, array, append, zeros, vstack, mean, prod, ones, dtype, full, shape, copy, int8
+from numpy import count_nonzero, array, append, zeros, vstack, mean, prod, ones, dtype, full, shape, copy, int8, uint8
+from numpy import place, unpackbits
 from numpy import sum as np_sum
 from numpy import abs as np_abs
 from numpy.random import RandomState
@@ -34,7 +35,7 @@ aes_s_box = array([
 
 
 def binary_to_int(binary):
-    assert all((binary==0) | (binary==1)), 'The input must be a binary array!'
+    assert all((binary == 0) | (binary == 1)), 'The input must be a binary array!'
     number = 0
     n = len(binary)
     for i in range(n):
@@ -43,19 +44,19 @@ def binary_to_int(binary):
 
 
 def array_1_1_to_int(array_1_1):
-    assert all((array_1_1==-1) | (array_1_1==1)), 'The input must be a {1,-1}-array!'
+    assert all((array_1_1 == -1) | (array_1_1 == 1)), 'The input must be a {1,-1}-array!'
     cp = copy(array_1_1)
-    place(cp, cp==1, [0])
-    place(cp, cp==-1, [1])
+    place(cp, cp == 1, [0])
+    place(cp, cp == -1, [1])
     return binary_to_int(cp)
 
 
 def byte_to_array_1_1(byte):
-    assert type(byte)==uint8, 'The input must be of type numpy.uint8!'
+    assert type(byte) == uint8, 'The input must be of type numpy.uint8!'
     binary = unpackbits(array([byte], dtype=uint8))
     res = array(binary, dtype=int8)
-    place(res, res==1, [-1])
-    place(res, res==0, [1])
+    place(res, res == 1, [-1])
+    place(res, res == 0, [1])
     return res
 
 
@@ -87,7 +88,7 @@ def random_input(n, random_instance=RandomState()):
 def all_inputs(n):
     """
     This functions generates a iterator which produces all possible {-1,1}-vectors.
-    :param int
+    :param n: int
            Length of a n bit vector
     :returns: array of int8
               An array with all possible different {-1,1}-vectors of length `n`.
@@ -298,6 +299,8 @@ def approx_stabilities(instance, num, reps, random_instance=RandomState()):
                 Amount of challenges to be evaluated
     :param reps: int
                  Amount of repetitions per challenge
+    :param random_instance: numpy.random.RandomState
+                 PRNG instance for generating seeded random values
     :return: array of float
              Array of the stabilities for each challenge
     """
