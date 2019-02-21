@@ -1,10 +1,10 @@
 """
 Hyperparameter Optimization: Testing Dropout.
 """
-from numpy.random import RandomState
 from pypuf.experiments.experiment.mlp_keras import ExperimentMLP
 from pypuf.experiments.experimenter import Experimenter
 from pypuf.simulation.arbiter_based.ltfarray import LTFArray
+from numpy.random import RandomState
 
 
 SEED_RANGE = 2 ** 32
@@ -29,7 +29,7 @@ for k, n, (min_CRPs, max_CRPs), preprocess, seed_i, seed_c, seed_m, seed_a in de
         parameters.append([k, n, LTFArray.transform_id, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_atf, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_aes_substitution, LTFArray.combiner_xor, num])
-        parameters.append([k, n, LTFArray.transform_lightweight_secure_original, LTFArray.combiner_xor, num])
+        parameters.append([k, n, LTFArray.transform_lightweight_secure, LTFArray.combiner_xor, num])
         if n == 64:
             parameters.append([k, n, LTFArray.transform_fixed_permutation, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_random, LTFArray.combiner_xor, num])
@@ -53,5 +53,7 @@ for k, n, (min_CRPs, max_CRPs), preprocess, seed_i, seed_c, seed_m, seed_a in de
             )
             experiments.append(experiment)
 
-    experimenter = Experimenter(experiments=experiments, log_name=log_name)
+    experimenter = Experimenter(result_log_name=log_name, cpu_limit=1)
+    for e in experiments:
+        experimenter.queue(e)
     experimenter.run()

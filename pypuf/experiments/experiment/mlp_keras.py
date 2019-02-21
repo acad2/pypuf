@@ -16,7 +16,7 @@ class ExperimentMLP(Experiment):
     def __init__(self, log_name, N, n, k, transformation, combiner, preprocess, batch_size=1000, iteration_limit=1000,
                  seed_simulation=None, seed_challenges=None, seed_model=None, seed_accuracy=None):
         super().__init__(
-            log_name='%s_MLP_0x%x_0x%x_0_%i_%i_%i_%s_%s' % (
+            progress_log_name='{0}_MLP_0x{1}_0x{2}_0_{3}_{4}_{5}_{6}_{7}'.format(
                 log_name,
                 seed_model,
                 seed_simulation,
@@ -63,7 +63,7 @@ class ExperimentMLP(Experiment):
         self.validation_set = tools.TrainingSet(self.simulation, NUM_VALIDATION_SET, self.prng_challenges)
 
         self.learner = MultiLayerPerceptron(
-            log_name=self.log_name,
+            log_name=self.progress_log_name,
             n=self.n,
             k=self.k,
             training_set=self.training_set,
