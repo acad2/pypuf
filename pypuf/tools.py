@@ -4,14 +4,13 @@ or polynomial division. The spectrum is rich and the functions are used in many 
 helper module.
 """
 import itertools
-from numpy import count_nonzero, array, append, zeros, vstack, mean, prod, ones, dtype, full, shape, copy, int16, all
-from numpy import place, unpackbits, int8, uint8
+from numpy import count_nonzero, array, append, zeros, vstack, mean, prod, ones, dtype, full, shape, copy, int8
 from numpy import sum as np_sum
 from numpy import abs as np_abs
 from numpy.random import RandomState
 from random import sample
 
-RESULT_TYPE = 'int8'
+BIT_TYPE = int8
 
 
 aes_s_box = array([
@@ -82,7 +81,7 @@ def random_input(n, random_instance=RandomState()):
     :returns: array of int8
               A pseudo random array of -1 and 1
     """
-    return (random_instance.choice((-1, +1), n)).astype(RESULT_TYPE)
+    return random_inputs(n, 1, random_instance)[0]
 
 
 def all_inputs(n):
@@ -93,7 +92,7 @@ def all_inputs(n):
     :returns: array of int8
               An array with all possible different {-1,1}-vectors of length `n`.
     """
-    return (array(list(itertools.product((-1, +1), repeat=n)))).astype(RESULT_TYPE)
+    return (array(list(itertools.product((-1, +1), repeat=n)))).astype(BIT_TYPE)
 
 
 def random_inputs(n, num, random_instance=RandomState()):
@@ -109,10 +108,7 @@ def random_inputs(n, num, random_instance=RandomState()):
     :return: array of num {-1,1} int8 arrays
              An array with num random {-1,1} int arrays.
     """
-    res = zeros((num, n), dtype=RESULT_TYPE)
-    for i in range(num):
-        res[i] = random_input(n, random_instance=random_instance)
-    return res
+    return 2 * random_instance.randint(0, 2, (num, n), dtype=BIT_TYPE) - 1
 
 
 def sample_inputs(n, num, random_instance=RandomState()):
@@ -150,7 +146,7 @@ def append_last(arr, item):
     # the lowest level should contain one item
     dimension[-1] = 1
     # create an array white shape(array) where the lowest level contains only one item
-    item_arr = full(dimension, item, dtype=RESULT_TYPE)
+    item_arr = full(dimension, item, dtype=BIT_TYPE)
     # the item should be appended at the lowest level
     axis = len(dimension) - 1
     return append(arr, item_arr, axis=axis)
@@ -172,10 +168,6 @@ def approx_dist(instance1, instance2, num, random_instance=RandomState()):
     assert instance1.n == instance2.n
     inputs = random_inputs(instance1.n, num, random_instance=random_instance)
     return (num - count_nonzero(instance1.eval(inputs) == instance2.eval(inputs))) / num
-
-
-def set_dist(instance, set):
-    return (set.N - count_nonzero(instance.eval(set.challenges) == set.responses)) / set.N
 
 
 def approx_fourier_coefficient(s, training_set):
@@ -208,8 +200,8 @@ def chi_vectorized(s, inputs):
     assert len(s) == len(inputs[0])
     result = inputs[:, s > 0]
     if result.size == 0:
-        return ones(len(inputs), dtype=RESULT_TYPE)
-    return prod(result, axis=1, dtype=RESULT_TYPE)
+        return ones(len(inputs), dtype=BIT_TYPE)
+    return prod(result, axis=1, dtype=BIT_TYPE)
 
 
 def compare_functions(function1, function2):
@@ -229,9 +221,7 @@ def compare_functions(function1, function2):
 
 def transform_challenge_01_to_11(challenge):
     """
-    This function is meant to be used with the numpy vectorize method.
-    After vectorizing, transform_challenge_01_to_11 can be applied to
-    numpy arrays to transform a challenge from 0,1 notation to -1,1 notation.
+    This function is used to transform a challenge from 0,1 notation to -1,1 notation.
     :param challenge: array of int8
                       Challenge vector in 0,1 notation
     :return: array of int8
@@ -246,9 +236,7 @@ def transform_challenge_01_to_11(challenge):
 
 def transform_challenge_11_to_01(challenge):
     """
-    This function is meant to be used with the numpy vectorize method.
-    After vectorizing, transform_challenge_11_to_01 can be applied to
-    numpy arrays to transform a challenge from -1,1 notation to 0,1 notation.
+    This function is used to transform a challenge from -1,1 notation to 0,1 notation.
     :param challenge: array of int8
                       Challenge vector in -1,1 notation
     :return: array of int8
@@ -293,7 +281,7 @@ def poly_mult_div(challenge, irreducible_polynomial, k):
             res = array([challenge], dtype='int8')
         else:
             res = vstack((res, challenge))
-    res = res.astype(RESULT_TYPE)
+    res = res.astype(BIT_TYPE)
     assert_result_type(res)
     return res
 
@@ -326,40 +314,54 @@ def assert_result_type(arr):
     This function checks the type of the array to match the RESULT_TYPE
     :param arr: array of arbitrary type
     """
-    assert arr.dtype == dtype(RESULT_TYPE), 'Must be an array of {0}. Got array of {1}'.format(RESULT_TYPE, arr.dtype)
+    assert arr.dtype == dtype(BIT_TYPE), 'Must be an array of {0}. Got array of {1}'.format(BIT_TYPE, arr.dtype)
 
 
-def generate_random_permutations(k, n, seed=None):
-    prng = RandomState(seed)
-    seeds = prng.randint(low=0, high=2**32, size=k)
-    return array(
-        [
-            RandomState(seeds[i]).permutation(n)
-            for i in range(k)
-        ], dtype=int16
-    )
-
-
-class ChallengeResponseSet():
+class ChallengeResponseSet:
+    """
+    A set of challenges and corresponding responses.
+    """
 
     def __init__(self, challenges, responses):
+        """
+        Create a set of challenges and corresponding responses. Note that the order of the
+        challenges and responses parameter is relevant.
+        :param challenges: List of challenges
+        :param responses: List of responses, ordered accordingly
+        """
         self.challenges = challenges
         self.responses = responses
         assert len(self.challenges) == len(self.responses)
         self.N = len(self.challenges)
 
     def random_subset(self, N):
+        """
+        Gives a random subset of this challenge response set.
+        :param N: Either a relative (to the total number) or absolute number of challenges.
+        :return: A random subset samples from this challenge response set.
+        """
         if N < 1:
             N = int(self.N * N)
         return self.subset(sample(range(self.N), N))
 
-    def block_subset(self, idx, total):
+    def block_subset(self, i, total):
+        """
+        Gives the i-th block of this challenge response set.
+        :param i: Index of the block that is to be returned.
+        :param total: Total number of blocks.
+        :return: A challenge response set.
+        """
         return self.subset(range(
-            int(idx / total * self.N),
-            int((idx + 1) / total * self.N)
+            int(i / total * self.N),
+            int((i + 1) / total * self.N)
         ))
 
     def subset(self, subset_slice):
+        """
+        Gives the subset of this challenge response set defined by the slice given.
+        :param subset_slice: A python array slice
+        :return: A challenge response set defined accordingly
+        """
         return ChallengeResponseSet(
             challenges=self.challenges[subset_slice],
             responses=self.responses[subset_slice]
@@ -382,7 +384,7 @@ class TrainingSet(ChallengeResponseSet):
                                 PRNG which is used to draft challenges.
         """
         self.instance = instance
-        challenges = (array(list(sample_inputs(instance.n, N, random_instance=random_instance)))).astype(RESULT_TYPE)
+        challenges = array(list(sample_inputs(instance.n, N, random_instance=random_instance)))
         super().__init__(
             challenges=challenges,
             responses=instance.eval(challenges)

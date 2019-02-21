@@ -5,7 +5,8 @@ order to be executed.
 import abc
 import logging
 import logging.handlers
-from datetime import datetime, timedelta
+import sys
+from time import time, clock
 
 
 class Experiment(object):
@@ -18,16 +19,14 @@ class Experiment(object):
         """
         :param log_name: A unique name, used for log path.
         """
-
-        # Setup logger for experiment specific logging
-        self.progress_logger = logging.getLogger(log_name)
         self.log_name = log_name
-        self.progress_logger.setLevel(logging.DEBUG)
 
-        # This must be set at run
+        # This must be set at run, loggers can (under circumstances) not be pickled
+        self.progress_logger = None
         self.result_logger = None
 
-        # will be set in execute
+        # Prepare time measurement
+        self.timer = clock if sys.platform == 'win32' else time
         self.measured_time = None
 
     @abc.abstractmethod
@@ -42,7 +41,6 @@ class Experiment(object):
         Used for preparation work that shall be not timed.
         Executed just before run()
         """
-        pass
 
     @abc.abstractmethod
     def run(self):
@@ -51,25 +49,42 @@ class Experiment(object):
         """
         raise NotImplementedError('users must define run() to use this base class')
 
-    def execute(self, queue, logger_name):
+    def execute(self, logging_queue, logger_name):
         """
         Executes the experiment at hand by
         (1) calling run() and measuring the run time of run() and
         (2) calling analyze().
-        :param queue: multiprocessing.queue
+        :param logging_queue: multiprocessing.queue
                       Multiprocessing safe queue which is used to serialize the logging
         :param logger_name: string
                         Name of the experimenter result logger
         """
-        self.result_logger = setup_result_logger(queue, logger_name)
-        file_handler = logging.FileHandler('%s.log' % self.log_name, mode='w')
+        # set up the progress logger
+        self.progress_logger = logging.getLogger(self.log_name)
+        self.progress_logger.setLevel(logging.DEBUG)
+
+        # set up the result logger
+        self.result_logger = setup_result_logger(logging_queue, logger_name)
+        file_handler = logging.FileHandler('logs/%s.log' % self.log_name, mode='w')
         file_handler.setLevel(logging.DEBUG)
         self.progress_logger.addHandler(file_handler)
+
+        # run preparations (not timed)
         self.prepare()
-        start_time = datetime.now()
+
+        # run the actual experiment
+        start_time = self.timer()
         self.run()
-        self.measured_time = timedelta(seconds=(datetime.now() - start_time).total_seconds())
-        self.analyze()
+        self.measured_time = self.timer() - start_time
+
+        # analyze the result
+        result = self.analyze()
+
+        # clean up and return
+        self.progress_logger.removeHandler(file_handler)
+        file_handler.close()
+
+        return result
 
 
 def setup_result_logger(queue, logger_name):

@@ -2,13 +2,46 @@
 This module provides several different implementations of arbiter PUF simulations. The linear threshold function array
 model is the core of each simulation class.
 """
-from numpy import sum as np_sum
-from numpy import prod, shape, sign, array, transpose, concatenate
-from numpy import dstack, swapaxes, sqrt, amax, tile, append, int8
+from numpy import sum as np_sum, ones, ndarray, zeros, reshape, broadcast_to
+from numpy import prod, shape, sign, array, transpose, concatenate, swapaxes, sqrt, amax, append, int8
 from numpy.random import RandomState
 from pypuf import tools
 from pypuf.simulation.base import Simulation
 import pypuf_helper as ph
+
+
+class CompoundTransformation:
+    """
+    Defines an input transformation that is build from a generator function.
+    The purpose of this class is mainly to define generated input transformations in a way they can be pickled.
+    """
+
+    def __init__(self, generator, args):
+        """
+        Defines a compound input transformation
+        :param generator: Generator function to be used.
+        :param args: Arguments for the generator function.
+        """
+        self.generator = generator
+        self.args = args
+        self.__name__ = generator(*args).__name__
+        self._transform = None
+
+    def build(self):
+        """
+        Calls the generator function, supplies the defined arguments and returns the result
+        :return: The compound input transformation as defined for this instance.
+        """
+        return self.generator(*self.args)
+
+    def __call__(self, *args, **kwargs):
+        """
+        If called directly, we build and cache the compound transformation. Hence, this class
+        behaves transparent if treated directly as input transformation with few overhead.
+        """
+        if not self._transform:
+            self._transform = self.build()
+        return self._transform(*args, **kwargs)
 
 
 class LTFArray(Simulation):
@@ -17,8 +50,8 @@ class LTFArray(Simulation):
     and constant bias added.
     """
 
-    @staticmethod
-    def combiner_xor(responses):
+    @classmethod
+    def combiner_xor(cls, responses):
         """
         combines output responses with the XOR operation
         :param responses: Array of int of float with shape(N,k,n)
@@ -28,8 +61,8 @@ class LTFArray(Simulation):
         """
         return ph.combiner_xor(responses)
 
-    @staticmethod
-    def combiner_ip_mod2(responses):
+    @classmethod
+    def combiner_ip_mod2(cls, responses):
         """
         combines output responses with the inner product mod 2 operation
         :param responses: a array with a number of vectors of single LTF results
@@ -47,8 +80,8 @@ class LTFArray(Simulation):
             1
         )
 
-    @staticmethod
-    def transform_id(challenges, k):
+    @classmethod
+    def transform_id(cls, challenges, k):
         """
         Input transformation that does nothing.
         :param challenges: array of int8 shape(N,n)
@@ -58,10 +91,8 @@ class LTFArray(Simulation):
         :return:  array of int8 shape(N,k,n)
                   Array of transformed challenges.
         """
-        tools.assert_result_type(challenges)
-        res = ph.transform_id(challenges, k)
-        tools.assert_result_type(res)
-        return res
+        (N, n) = challenges.shape
+        return transpose(broadcast_to(challenges, (k, N, n)), axes=(1, 0, 2))
 
     @staticmethod
     def transform_none(challenges, k):
@@ -86,9 +117,9 @@ class LTFArray(Simulation):
         # Transform with ATF monomials
         challenges = transpose(
             array([
-                prod(challenges[:, i:], 1, dtype=tools.RESULT_TYPE)
+                prod(challenges[:, i:], 1, dtype=tools.BIT_TYPE)
                 for i in range(len(challenges[0]))
-            ], dtype=tools.RESULT_TYPE)
+            ], dtype=tools.BIT_TYPE)
         )
 
         # Same challenge for all k Arbiters
@@ -96,41 +127,8 @@ class LTFArray(Simulation):
         tools.assert_result_type(res)
         return res
 
-    @staticmethod
-    def transform_mm(challenges, k):
-        """
-        Input transformation that transforms nice.
-        :param challenges: array of int8 shape(N,n)
-                           Array of challenges which should be evaluated by the simulation.
-        :param k: int
-                  Number of LTFArray PUFs
-        :return:  array of int8 shape(N,k,n)
-                  Array of transformed challenges.
-        """
-        tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
-        assert k == 2, 'MM transform currently only implemented for k=2.'
-        assert n % 2 == 0, 'MM transform only defined for even n.'
-
-        cs_1 = challenges
-        cs_2 = transpose(
-            concatenate(
-                (
-                    [challenges[:, 0]],
-                    [challenges[:, i] * challenges[:, i + 1] for i in range(0, n, 2)],
-                    [challenges[:, i] * challenges[:, i + 1] * challenges[:, i + 2] for i in range(0, n - 2, 2)]
-                )
-            )
-        )
-
-        result = swapaxes(dstack((cs_1, cs_2)), 1, 2)
-        assert result.shape == (N, 2, n)
-        tools.assert_result_type(result)
-        return result
-
     @classmethod
-    def transform_lightweight_secure_original(cls, challenges, k):
+    def transform_lightweight_secure(cls, challenges, k):
         """
         Input transform as defined by Majzoobi et al. 2008.
         :param challenges: array of int8 shape(N,n)
@@ -141,90 +139,27 @@ class LTFArray(Simulation):
                   Array of transformed challenges.
         """
         tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
+        (N, n) = challenges.shape
         assert n % 2 == 0, 'Secure Lightweight Input Transformation only defined for even n.'
 
-        cs_shift_trans = cls.transform_shift_lightweight_secure(challenges, k)
+        sub_challenges = cls.transform_shift(challenges, k)
 
-        # Perform atf transform
-        result = transpose(
-            array([
-                prod(cs_shift_trans[:, :, i:], 2)
-                for i in range(n)
-            ], dtype=tools.RESULT_TYPE),
-            (1, 2, 0)
-        )
-
-        assert result.shape == (N, k, n), 'The resulting challenges have not the desired shape.'
-        tools.assert_result_type(result)
-        return result
-
-    @classmethod
-    def transform_lightweight_secure(cls, challenges, k):
-        """
-        Input transform as defined by Majzoobi et al. 2008, but with the shift
-        operation executed after and without ATF transform.
-        :param challenges: array of int8 shape(N,n)
-                           Array of challenges which should be evaluated by the simulation.
-        :param k: int
-                  Number of LTFArray PUFs
-        :return:  array of int8 shape(N,k,n)
-                  Array of transformed challenges.
-        """
-        tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
-        assert n % 2 == 0, 'Secure Lightweight Input Transformation only defined for even n.'
-
-        challenges = transpose(
+        sub_challenges = transpose(
             concatenate(
                 (
-                    [challenges[:, i] * challenges[:, i + 1] for i in range(0, n, 2)],  # (x1x2, x3x4, ... xn-1xn)
-                    [challenges[:, 0]],  # (x1)
-                    [challenges[:, i] * challenges[:, i + 1] for i in range(1, n - 2, 2)],  # (x2x3, x4x5, ... xn-2xn-1)
-                )
-            )
-        )
-
-        assert challenges.shape == (N, n)
-        res = cls.transform_shift(challenges, k)
-        tools.assert_result_type(res)
-        return res
-
-    @classmethod
-    def transform_shift_lightweight_secure(cls, challenges, k):
-        """
-        Input transform as defined by Majzoobi et al. 2008, with the shift
-        operation executed first and without ATF transform.
-        :param challenges: array of int8 shape(N,n)
-                           Array of challenges which should be evaluated by the simulation.
-        :param k: int
-                  Number of LTFArray PUFs
-        :return:  array of int8 shape(N,k,n)
-                  Array of transformed challenges.
-        """
-        tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
-        assert n % 2 == 0, 'Secure Lightweight Input Transformation only defined for even n.'
-
-        shifted = cls.transform_shift(challenges, k)
-
-        challenges = transpose(
-            concatenate(
-                (
-                    [shifted[:, :, i] * shifted[:, :, i + 1] for i in range(0, n, 2)],
-                    [shifted[:, :, 0]],
-                    [shifted[:, :, i] * shifted[:, :, i + 1] for i in range(1, n - 2, 2)],
+                    [sub_challenges[:, :, i] * sub_challenges[:, :, i + 1] for i in range(0, n, 2)],
+                    [sub_challenges[:, :, 0]],
+                    [sub_challenges[:, :, i] * sub_challenges[:, :, i + 1] for i in range(1, n - 2, 2)],
                 )
             ),
             (1, 2, 0)
         )
 
-        assert challenges.shape == (N, k, n)
-        tools.assert_result_type(challenges)
-        return challenges
+        result = cls.att(sub_challenges)
+
+        assert result.shape == (N, k, n), 'The resulting challenges do not have the desired shape.'
+        tools.assert_result_type(result)
+        return result
 
     @classmethod
     def transform_soelter_lightweight_secure(cls, challenges, k):
@@ -239,8 +174,7 @@ class LTFArray(Simulation):
                   Array of transformed challenges.
         """
         tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
+        (N, n) = challenges.shape
         assert n % 2 == 0, 'Sölter\'s Secure Lightweight Input Transformation only defined for even n.'
         n_half = int(n / 2)
 
@@ -259,8 +193,8 @@ class LTFArray(Simulation):
         tools.assert_result_type(res)
         return res
 
-    @staticmethod
-    def transform_shift(challenges, k):
+    @classmethod
+    def transform_shift(cls, challenges, k):
         """
         Input transformation that shifts the input bits for each of the k PUFs.
         :param challenges: array of int8 shape(N,n)
@@ -284,87 +218,7 @@ class LTFArray(Simulation):
         return result
 
     @classmethod
-    def transform_1_n_bent(cls, challenges, k):
-        """
-        For one LTF, we compute the input as follows: the i-th input bit will be the result
-        of the challenge shifted by i bits to the left, then input into inner product mod 2
-        function.
-        The other LTF get the original input.
-        :param challenges: array of int8 shape(N,n)
-                           Array of challenges which should be evaluated by the simulation.
-        :param k: int
-                  Number of LTFArray PUFs
-        :return:  array of int8 shape(N,k,n)
-                  Array of transformed challenges.
-        """
-        tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
-        assert n % 2 == 0, '1-n bent transform only defined for even n.'
-
-        shift_challenges = cls.transform_shift(challenges, n)
-        assert shift_challenges.shape == (N, n, n)
-
-        bent_challenges = transpose(
-            array(
-                [
-                    cls.combiner_ip_mod2(shift_challenges[:, i, :])
-                    for i in range(n)
-                ]
-            )
-        )
-        assert bent_challenges.shape == (N, n)
-        res = array([
-            concatenate(
-                (
-                    [bent_challenges[j]],  # 'bent' challenge as generated above
-                    tile(challenges[j], (k - 1, 1))  # unmodified challenge for k-1 LTFs
-                ),
-                axis=0
-            )
-            for j in range(N)
-        ], dtype=tools.RESULT_TYPE)
-        tools.assert_result_type(res)
-        return res
-
-    @classmethod
-    def transform_1_1_bent(cls, challenges, k):
-        """
-        For one LTF, we compute the input as follows: the first input bit will be
-        the result of IPmod2 of the original challenge, all other input bits will
-        remain the same.
-        The other LTF get the original input.
-        :param challenges: array of int8 shape(N,n)
-                           Array of challenges which should be evaluated by the simulation.
-        :param k: int
-                  Number of LTFArray PUFs
-        :return:  array of int8 shape(N,k,n)
-                  Array of transformed challenges.
-        """
-        tools.assert_result_type(challenges)
-        N = len(challenges)
-        n = len(challenges[0])
-        assert k >= 2, '1-n bent transform currently only implemented for k>=2.'
-        assert n % 2 == 0, '1-n bent transform only defined for even n.'
-
-        bent_challenge_bits = cls.combiner_ip_mod2(challenges)
-        assert bent_challenge_bits.shape == (N,)
-        res = array([
-            concatenate(
-                (
-                    [concatenate(([[bent_challenge_bits[j]], challenges[j][1:]]))],
-                    # 'bent' challenge bit plus remainder unchanged
-                    tile(challenges[j], (k - 1, 1))  # unmodified challenge for k-1 LTFs
-                ),
-                axis=0
-            )
-            for j in range(N)
-        ], dtype=tools.RESULT_TYPE)
-        tools.assert_result_type(res)
-        return res
-
-    @staticmethod
-    def transform_polynomial(challenges, k):
+    def transform_polynomial(cls, challenges, k):
         """
         This input transformation interprets a challenge c as a
         polynomial over the finite field GF(2^n)=F2/f*F2, where f is a
@@ -389,25 +243,25 @@ class LTFArray(Simulation):
             irreducible_polynomial = array(
                 [1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                dtype=tools.RESULT_TYPE
+                dtype=tools.BIT_TYPE
             )
         elif n == 48:
             irreducible_polynomial = array(
                 [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1], dtype=tools.RESULT_TYPE
+                 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1], dtype=tools.BIT_TYPE
             )
         elif n == 32:
             irreducible_polynomial = array(
                 [1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                dtype=tools.RESULT_TYPE
+                dtype=tools.BIT_TYPE
             )
         elif n == 24:
             irreducible_polynomial = array([1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                                           dtype=tools.RESULT_TYPE)
+                                           dtype=tools.BIT_TYPE)
         elif n == 16:
-            irreducible_polynomial = array([1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1], dtype=tools.RESULT_TYPE)
+            irreducible_polynomial = array([1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1], dtype=tools.BIT_TYPE)
         elif n == 8:
-            irreducible_polynomial = array([1, 0, 1, 0, 0, 1, 1, 0, 1], dtype=tools.RESULT_TYPE)
+            irreducible_polynomial = array([1, 0, 1, 0, 0, 1, 1, 0, 1], dtype=tools.BIT_TYPE)
         tools.assert_result_type(irreducible_polynomial)
 
         # Transform challenge to 0,1 array to compute transformation with numpy.
@@ -420,14 +274,14 @@ class LTFArray(Simulation):
         tools.assert_result_type(challenges)
 
         # Transform challenges back to -1,1 notation.
-        result = array([tools.transform_challenge_01_to_11(c) for c in challenges], dtype=tools.RESULT_TYPE)
+        result = array([tools.transform_challenge_01_to_11(c) for c in challenges], dtype=tools.BIT_TYPE)
 
         assert result.shape == (N, k, n), 'The resulting challenges have not the desired shape.'
         tools.assert_result_type(result)
         return result
 
-    @staticmethod
-    def transform_permutation_atf(challenges, k):
+    @classmethod
+    def transform_permutation_atf(cls, challenges, k):
         """
         This transformation performs first a pseudorandom permutation of the challenge k times before applying the
         ATF transformation to each challenge.
@@ -444,28 +298,21 @@ class LTFArray(Simulation):
         seed = 0x1234
 
         # Perform random permutations
-        cs_permuted = array(
+        sub_challenges = array(
             [
                 [RandomState(seed + i).permutation(c)
                  for i in range(k)]
                 for c in challenges
             ]
         )
-        # Perform atf transform
-        result = transpose(
-            array([
-                prod(cs_permuted[:, :, i:], 2)
-                for i in range(n)
-            ], dtype=tools.RESULT_TYPE),
-            (1, 2, 0)
-        )
+        result = cls.att(sub_challenges)
 
         assert result.shape == (N, k, n), 'The resulting challenges have not the desired shape.'
         tools.assert_result_type(result)
         return result
 
-    @staticmethod
-    def transform_random(challenges, k):
+    @classmethod
+    def transform_random(cls, challenges, k):
         """
         This input transformation chooses for each Arbiter Chain an random challenge based on the initial challenge.
         :param challenges: array of int8 shape(N,n)
@@ -479,16 +326,31 @@ class LTFArray(Simulation):
         N = len(challenges)
         n = len(challenges[0])
 
-        cs_01 = array([tools.transform_challenge_11_to_01(c) for c in challenges], dtype=tools.RESULT_TYPE)
+        cs_01 = array([tools.transform_challenge_11_to_01(c) for c in challenges], dtype=tools.BIT_TYPE)
 
-        result = array([RandomState(c).choice((-1, 1), (k, n)) for c in cs_01], dtype=tools.RESULT_TYPE)
+        result = array([RandomState(c).choice((-1, 1), (k, n)) for c in cs_01], dtype=tools.BIT_TYPE)
 
         assert result.shape == (N, k, n), 'The resulting challenges have not the desired shape.'
         tools.assert_result_type(result)
         return result
 
     @staticmethod
-    def transform_fixed_permutation(challenges, k):
+    def transform_aes_substitution(challenges, k):
+        result = array([k * [tools.substitute_aes(c)] for c in challenges]).astype(int8)
+
+        # Perform atf transform
+        result = transpose(
+            array([
+                prod(result[:, :, i:], 2)
+                for i in range(shape(result)[2])
+            ], dtype=int8),
+            (1, 2, 0)
+        )
+
+        return result
+
+    @classmethod
+    def transform_fixed_permutation(cls, challenges, k):
         """
         Permutes the challenge bits using hardcoded, fix point free permutations designed such that no
         sub-challenge bit gets permuted equally for all other generated sub-challenges. Such permutations
@@ -528,96 +390,19 @@ class LTFArray(Simulation):
             1
         )
 
-        # Perform atf transform
-        result = transpose(
-            array([
-                prod(result[:, :, i:], 2)
-                for i in range(n)
-            ], dtype=int8),
-            (1, 2, 0)
-        )
+        result = cls.att(result)
 
         return result
 
-    @staticmethod
-    def transform_aes_substitution(challenges, k):
-        result = array([k * [tools.substitute_aes(c)] for c in challenges]).astype(int8)
-
-        # Perform atf transform
-        result = transpose(
-            array([
-                prod(result[:, :, i:], 2)
-                for i in range(shape(result)[2])
-            ], dtype=int8),
-            (1, 2, 0)
-        )
-
-        return result
-
-    @staticmethod
-    def generate_permutation_transform(permutations, atf=False):
-        """
-        Returns an input transformation that uses a given permutation
-        :param permutations: array
-                    2d-array that defines the permutation for each PUF chain
-        :param atf: boolean
-                    Perform ATF transform after permuting
-        :return:  A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
-                  A function that can perform the desired transformation.
-        """
-        assert len(permutations.shape) == 2,\
-            'The input "permutations" has to be a 2-dim array, but it had shape %s.' % (permutations.shape,)
-        (puf_count, challenge_length) = permutations.shape
-
-        def transform(challenges, k):
-            """
-            Method as described in generate_permutation_transform doc string.
-            :param challenges: array of int8 shape(N,n)
-                               Array of challenges which should be evaluated by the simulation.
-            :param k: int
-                     Number of LTFArray PUFs
-            :return: A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
-                     A function that can perform the desired transformation.
-            """
-            tools.assert_result_type(challenges)
-            (_, n) = challenges.shape
-            assert k == puf_count and n == challenge_length, \
-                'Due to the used permutation the input transform requires (n=%i, k=%i),' \
-                'but (%i, %i) where given.' % (puf_count, challenge_length, k, n)
-
-            result = swapaxes(
-                array([
-                    challenges[:, permutations[i]]
-                    for i in range(puf_count)
-                ]),
-                0,
-                1
-            ).astype(int8)
-
-            if atf:
-                # Perform atf transform
-                result = transpose(
-                    array([
-                        prod(result[:, :, i:], 2)
-                        for i in range(n)
-                    ]),
-                    (1, 2, 0)
-                ).astype(int8)
-
-            return result
-
-        transform.__name__ = 'transform_permutations' + ('_plus_atf_' if atf else '')
-        return transform
-
-    @staticmethod
-    def generate_stacked_transform(transform_1, puf_count, transform_2):
+    @classmethod
+    def generate_stacked_transform(cls, transform_1, puf_count, transform_2):
         """
         Returns an input transformation that will transform the first puf_count challenges using transform_1,
         the remaining k - puf_count challenges using transform_2.
         :param transform_1: A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
                             The function transforms input challenges in order to increase resistance against attacks.
         :param puf_count: int
-                          Number of permutations to be used (must equal LTFArray.k)
+                          Number of LTFs that receive challenges transformed with transform_1.
         :param transform_2: A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
                             The function transforms input challenges in order to increase resistance against attacks.
         :return: A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
@@ -657,23 +442,21 @@ class LTFArray(Simulation):
 
         return transform
 
-    @staticmethod
-    def generate_random_permutation_transform(seed, challenge_length, puf_count, atf=False):
+    @classmethod
+    def generate_random_permutation_transform(cls, seed, nn, kk, atf=False):
         """
         Returns an input transformation that uses k pseudorandomly generated permutations
         :param seed: int
                      Seed for the pseudorandom generation
-        :param challenge_length: int
-                   Challenge length (must equal LTFArray.n)
-        :param puf_count: int
-                          Number of permutations to be used (must equal LTFArray.k)
+        :param nn: int Challenge length (must equal LTFArray.n)
+        :param kk: int Number of permutations to be used (must equal LTFArray.k)
         :param atf: boolean
                     Perform ATF transform after permuting
         :return:  A function: array of int with shape(N,n), int number of PUFs k -> shape(N,k,n)
                   A function that can perform the desired transformation.
         """
         prng = RandomState(seed)
-        permutations = [prng.permutation(challenge_length) for _ in range(puf_count)]
+        permutations = [prng.permutation(nn) for _ in range(kk)]
 
         def transform(challenges, k):
             """
@@ -687,13 +470,13 @@ class LTFArray(Simulation):
             """
             tools.assert_result_type(challenges)
             (_, n) = challenges.shape
-            assert k == puf_count and n == challenge_length, \
+            assert k == kk and n == nn, \
                 'Permutations Input Transform cannot be used for LTFArrays with size other than defined'
 
-            result = swapaxes(
+            sub_challenges = swapaxes(
                 array([
                     challenges[:, permutations[i]]
-                    for i in range(puf_count)
+                    for i in range(kk)
                 ]),
                 0,
                 1
@@ -701,21 +484,15 @@ class LTFArray(Simulation):
 
             if atf:
                 # Perform atf transform
-                result = transpose(
-                    array([
-                        prod(result[:, :, i:], 2)
-                        for i in range(n)
-                    ]),
-                    (1, 2, 0)
-                )
+                sub_challenges = cls.att(sub_challenges)
 
-            return result
+            return sub_challenges
 
         transform.__name__ = 'transform_permutations' + ('_plus_atf_' if atf else '') + '_%x' % seed
         return transform
 
-    @staticmethod
-    def generate_concatenated_transform(transform_1, bit_number_transform_1, transform_2):
+    @classmethod
+    def generate_concatenated_transform(cls, transform_1, bit_number_transform_1, transform_2):
         """
         Returns an input transformation that will transform the first bit_number_transform_1 bit of each challenge using
         transform_1, the remaining bits using transform_2.
@@ -764,8 +541,64 @@ class LTFArray(Simulation):
 
         return transform
 
-    @staticmethod
-    def normal_weights(n, k, mu=0, sigma=1, random_instance=RandomState()):
+    @classmethod
+    def att(cls, sub_challenges):
+        """
+        Performs the "Arbiter Threshold Transform" (ATT) on an array of sub-challenges.
+        ATT is defined to modify any given sub-challenge c as follows:
+        Let c be a vector of n bits, then the i-th output bit of ATT(c) equals
+        prod_(j=i)^n c_j, i.e. the i-th output bit is the product of the i-th input bit
+        and all following input bits.
+
+        This method performs ATT in situ, i.e. without (much) additional memory.
+        The input array will be overwritten.
+        :param sub_challenges: array of shape (N, k, n), where N is the total number of
+        sub-challenge tuples, k is the number of sub-challenges per master-challenge, and
+        n is the number of bits per sub-challenge.
+        :return: transformed array of sub-challenges, shape (N, k, n)
+        """
+        (_, _, n) = sub_challenges.shape
+        for i in range(n - 2, -1, -1):
+            sub_challenges[:, :, i] *= sub_challenges[:, :, i + 1]
+        return sub_challenges
+
+    @classmethod
+    def att_inverse(cls, sub_challenges):
+        """
+        Performs the inverse "Arbiter Threshold Transform" (ATT) on an array of sub-challenges.
+        The inverse ATT is defined to modify any given sub-challenge x as follows:
+        Let x be a vector of n bits, then the i-th output bit of ATT_inverse(x) equals
+        x_i / x_(i+1), where x_(n+1) is treated as 1. I.e. the i-th output bit is the division
+        of the i-th input bit and the following input bit.
+
+        This method performs ATT in situ, i.e. without (much) additional memory.
+        The input array will be overwritten.
+
+        This method is defined for input bits in {-1,1} only, using other bits has undefined
+        behavior.
+
+        :param sub_challenges: array of shape (N, k, n), where N is the total number of
+        sub-challenge tuples, k is the number of sub-challenges per master-challenge, and
+        n is the number of bits per sub-challenge.
+        :return: transformed array of sub-challenges, shape (N, k, n)
+        """
+        (_, _, n) = sub_challenges.shape
+        for i in range(n - 1):
+            sub_challenges[:, :, i] *= sub_challenges[:, :, i + 1]
+        return sub_challenges
+
+    @classmethod
+    def efba_bit(cls, sub_challenges):
+        """
+        Converts sub-challenges to "efba" (extended for bias awareness) sub-challenges, i.e. appends a 1-bit to each
+        sub-challenge.
+        :param sub_challenges: A list of sub-challenge arrays, that is, an array of shape (N, k, n).
+        :return: A list of "efba" sub-challenge arrays, that is, an array of shape (N, k, n+1).
+        """
+        return tools.append_last(sub_challenges, tools.BIT_TYPE(1))
+
+    @classmethod
+    def normal_weights(cls, n, k, mu=0, sigma=1, random_instance=RandomState()):
         """
         Returns weights for an array of k LTFs of size n each.
         The weights are drawn from a normal distribution with given
@@ -790,72 +623,85 @@ class LTFArray(Simulation):
         """
         (self.k, self.n) = shape(weight_array)
         self.weight_array = weight_array
-        self.transform = transform
+        self.transform = transform.build() if isinstance(transform, CompoundTransformation) else transform
         self.combiner = combiner
-        self.bias = bias
-        # If it is a float append the same value to all PUFs
-        if isinstance(self.bias, float):
-            self.weight_array = tools.append_last(self.weight_array, self.bias)
-        # If it is an array append a value to each PUF
-        elif isinstance(self.bias, type(array([]))):
-            dimensions = len(shape(self.bias))
-            assert dimensions == 2, 'bias is an {0} dimensional array. Only two dimensions are allowed'.format(
-                dimensions)
-            self.weight_array = append(self.weight_array, self.bias, axis=1)
 
-    def eval(self, inputs):
-        """
-        evaluates a given array of challenges
-        :param inputs: array of int8 challenges
-        :return: array of int8 responses
-        """
-        tools.assert_result_type(inputs)
-        res = (sign(self.val(inputs))).astype(tools.RESULT_TYPE)
-        tools.assert_result_type(res)
-        return res
+        # If necessary, convert bias definition
+        if bias is None:
+            self.bias = zeros(shape=(self.k, 1))
+        elif isinstance(bias, float):
+            self.bias = bias * ones(shape=(self.k, 1))
+        elif isinstance(bias, ndarray) or isinstance(bias, list) and array(bias).shape == (self.k, ):
+            self.bias = reshape(array(bias), (self.k, 1))
+        else:
+            self.bias = bias if isinstance(bias, ndarray) else array(bias)
 
-    def val(self, inputs):
+        # Append bias values to weight array
+        assert self.bias.shape == (self.k, 1),\
+            'Expected bias to either have shape ({}, 1) or be a float, ' \
+            'but got an array with shape {} and value {}.'.format(self.k, self.bias.shape, self.bias)
+        self.weight_array = append(self.weight_array, self.bias, axis=1)
+
+    def eval(self, challenges):
         """
-        This method evaluates a given array of challenges.
-        It composes several parts of the LTFArray simulation in order
-        to return a array of combined responses. The responses are positive and negative float values.
-        :param inputs: array of int8 shape(N,n)
+        Same es val, but only returns the sign of the responses.
+        :param challenges: array of int8 challenges of shape (N, n)
+        :return: array of int8 responses of shape (N,)
+        """
+        return sign(self.val(challenges)).astype(tools.BIT_TYPE)
+
+    def val(self, challenges):
+        """
+        Evaluates a given array of (master) challenges and returns the precise value of the combined LTFs responses.
+        That is, the master challenges are first transformed into sub-challenges, using this LTFArray's transformation
+        method. The challenges are then evaluated using ltf_eval. The responses are then combined using this LTFArray's
+        combiner.
+        :param challenges: array of int8 shape(N,n)
                        Array of challenges which should be evaluated by the simulation.
-        :return: array of float or int depending on the combiner shape(N)
+        :return: array of float or int depending on the combiner of shape (N,)
                  Array of responses for the N different challenges.
         """
-        tools.assert_result_type(inputs)
-        return self.combiner(self.ltf_eval(self.transform(inputs, self.k)))
+        return self.combiner(self.ltf_eval(self.transform(challenges, self.k)))
 
-    def ltf_eval(self, inputs):
+    def ltf_eval(self, sub_challenges):
         """
-        This method evaluates a given array of challenges.
+        This method evaluates a given array of sub-challenges.
         For this purpose it uses the dot product on every challenge and weight of the weight_array.
-        :param inputs: array of int shape(N,k,n)
+        :param sub_challenges: array of int shape(N,k,n)
                        Array of challenges which should be evaluated by the simulation.
         :return: array of int shape(N,k)
                  Array of responses for the N different challenges.
         """
-        tools.assert_result_type(inputs)
-        assert self.n == inputs.shape[2], 'challenges should be length %i, but were %i' % (
-            self.n,
-            inputs.shape[2],
-        )
-        if self.bias:
-            assert self.weight_array.shape == (self.k, self.n + 1), 'weight array should have shape %s, but had %s' % (
-                (self.k, self.n + 1),
-                self.weight_array.shape,
+        assert sub_challenges.shape[1:] == (self.k, self.n),\
+            'Sub-challenges given to ltf_eval had shape {}, but shape (N, k, n) = (N, {}, {}) was expected.'.format(
+                sub_challenges.shape, self.k, self.n
             )
-            responses = ph.eval(tools.append_last(inputs, int8(1)), self.weight_array)
-            #inputs_and_bias = tools.append_last(inputs, 1)
-            #responses = transpose(array([dot(inputs_and_bias[:,l], self.weight_array[l]) for l in range(self.k)]))
-        else:
-            assert self.weight_array.shape == (self.k, self.n), 'weight array should have shape %s, but had %s' % (
-                (self.k, self.n),
-                self.weight_array.shape,
+        return self.core_eval(self.efba_bit(sub_challenges))
+
+    def core_eval(self, efba_sub_challenges):
+        """
+        The core function that evaluates the LTFArray.
+        :param efba_sub_challenges: (Extended for bias awareness sub challenges). Pre-processed challenges, i.e.
+        sub-challenges that have an extra 1-bit at the end.
+        Typically, this array is generated by processing a number of master-challenges with an input transformation
+        into a list of sub-challenge arrays and then processing it with efba_bit.
+        :return: The result of the LTFArray evaluation for each given array of "efba" sub-challenges
+        """
+        assert efba_sub_challenges.dtype == tools.BIT_TYPE,\
+            'LTFArrays can only be evaluated on challenges of type {}, but got type {}.'.format(
+                tools.BIT_TYPE, efba_sub_challenges.dtype
             )
-            responses = ph.eval(inputs, self.weight_array)
-        return responses
+        assert efba_sub_challenges.shape[1:] == (self.k, self.n + 1),\
+            '"Efba" sub-challenges given to core_eval must be of shape (N, k, n+1). Expected shape was (N, {}, {}),' \
+            'but got {}.\n' \
+            'Remember that all sub-challenges given to core_eval must have the "efba" input bit, i.e. the last bit' \
+            'of all sub-challenges must be 1. Hence, the third dimension must have length n+1.'.format(
+                self.k, self.n + 1, efba_sub_challenges.shape
+            )
+        assert self.weight_array.shape == (self.k, self.n + 1),\
+            'LTFArray\'s weight array was expected have shape (k, n+1) = {}, '\
+            'but had shape {} when core_eval was called.'.format((self.k, self.n + 1), self.weight_array.shape)
+        return ph.eval(efba_sub_challenges, self.weight_array)
 
 
 class NoisyLTFArray(LTFArray):
@@ -886,7 +732,7 @@ class NoisyLTFArray(LTFArray):
         self.sigma_noise = sigma_noise
         self.random = random_instance
 
-    def ltf_eval(self, inputs):
+    def ltf_eval(self, sub_challenges):
         """
         Calculates weight_array with given set of challenges including noise.
         The noise effect is a normal distributed random variable with mu=0,
@@ -894,7 +740,7 @@ class NoisyLTFArray(LTFArray):
         Random numbers are drawn from the PRNG instance generated when
         initializing the NoisyLTFArray.
         """
-        evaled_inputs = super().ltf_eval(inputs)
+        evaled_inputs = super().ltf_eval(sub_challenges)
         noise = self.random.normal(loc=0, scale=self.sigma_noise, size=(len(evaled_inputs), self.k))
         return evaled_inputs + noise
 
@@ -936,28 +782,32 @@ class SimulationMajorityLTFArray(LTFArray):
         assert vote_count % 2 == 1
         self.vote_count = vote_count
 
-    def val(self, inputs):
+    def val(self, challenges):
         """
         This function a calculates the output of the LTFArray based on weights with majority vote.
-        :param inputs: array of int shape(N,k,n)
+        :param challenges: array of int shape(N,k,n)
                        Array of challenges which should be evaluated by the simulation.
         :return: array of int shape(N)
                  Array of responses for the N different challenges.
         """
-        tools.assert_result_type(inputs)
-        return self.combiner(self.majority_vote(self.transform(inputs, self.k)))
+        return self.combiner(self.majority_vote(self.transform(challenges, self.k)))
 
-    def majority_vote(self, transformed_inputs):
+    def majority_vote(self, sub_challenges):
         """
         This function evaluates transformed input challenges and uses majority vote on them.
-        :param transformed_inputs: array of int with shape(N,k,n)
+        :param sub_challenges: array of int with shape(N,k,n)
                                    Array of transformed input challenges.
         :return: array of int with shape(N,k,n)
                  Majority voted responses for each of the k PUFs.
         """
-        evaled_inputs = tile(super().ltf_eval(transformed_inputs), (self.vote_count, 1, 1))
-        noise = self.random.normal(loc=0,
-                                   scale=self.sigma_noise,
-                                   size=(self.vote_count, len(transformed_inputs), self.k))
-        responses = sign(np_sum(sign(evaled_inputs + noise), 0))
-        return responses
+        # Evaluate the sub challeneges individually
+        (N, k, _) = sub_challenges.shape
+        evaluated_sub_challenges = super().ltf_eval(sub_challenges)
+
+        # Duplicate the evaluation result for each vote and add individual noise
+        # Note the votes are on the first axis
+        evaled_inputs = broadcast_to(evaluated_sub_challenges, (self.vote_count, N, k))
+        noise = self.random.normal(scale=self.sigma_noise, size=(self.vote_count, N, k))
+
+        # Majority vote (i.e., sign(sum(·))) along the first axis
+        return sign(np_sum(sign(evaled_inputs + noise), axis=0))

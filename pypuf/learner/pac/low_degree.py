@@ -4,7 +4,7 @@ This module contains the Low Degree Algorithm.
 from itertools import combinations
 import time
 import numpy as np
-from scipy.misc import comb as ncr
+from scipy.special import comb as ncr
 from pypuf.simulation.fourier_based.fourier_expansion import FourierExpansionSign, FourierCoefficient
 from pypuf import tools
 
@@ -102,4 +102,4 @@ class LowDegreeAlgorithm:
         :return iterator of arrays of length n
         """
         for indices in combinations(range(self.n), degree):
-            yield np.array([1 if i in indices else 0 for i in range(self.n)], dtype=tools.RESULT_TYPE)
+            yield np.array([1 if i in indices else 0 for i in range(self.n)], dtype=tools.BIT_TYPE)

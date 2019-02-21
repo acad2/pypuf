@@ -3,7 +3,7 @@ This module is used to test the command line tool which searches the number of v
 SimulationMajorityLTFArrays in order to satisfy a overall desired stability.
 """
 import unittest
-from test.utility import remove_test_logs, LOG_PATH
+from test.utility import remove_test_logs, LOG_PATH, mute
 import mv_num_of_votes
 
 
@@ -17,6 +17,7 @@ class TestMvNumOfVotes(unittest.TestCase):
         # Remove all log files
         remove_test_logs()
 
+    @mute
     def test_8_1_puf(self):
         """
         This method checks the output log of mv_num_of_votes for a stability greater equal the
@@ -28,8 +29,9 @@ class TestMvNumOfVotes(unittest.TestCase):
                               log_name])
 
         # Check if the number of results is correct
-        log_file = open(log_name + '.log', 'r')
+        log_file = open('logs/' + log_name + '.log', 'r')
         line = log_file.readline()
+        log_file.close()
 
         # If the line is '' then no stability where found which satisfy overall_desired_stability
         self.assertNotEqual(line, '', 'no stability where found which satisfy overall_desired_stability')
