@@ -7,3 +7,5 @@ astroid~=2.1
 matplotlib~=3.0
 keras~=2.2
 tensorflow~=1.12
+pandas~=0.24
+seaborn~=0.9

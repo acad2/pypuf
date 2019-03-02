@@ -54,7 +54,7 @@ def array_1_1_to_int(array_1_1):
 def byte_to_array_1_1(byte):
     assert type(byte) == uint8, 'The input must be of type numpy.uint8!'
     binary = unpackbits(array([byte], dtype=uint8))
-    res = array(binary, dtype=int8)
+    res = array(binary, dtype=BIT_TYPE)
     place(res, res == 1, [-1])
     place(res, res == 0, [1])
     return res
@@ -63,9 +63,8 @@ def byte_to_array_1_1(byte):
 def substitute_aes(challenge):
     assert all((challenge == -1) | (challenge == 1)), 'The input must be a {1,-1}-array!'
     n = len(challenge)
-    num = int(n / 8)
     s = copy(challenge)
-    for i in range(num):
+    for i in range(int(n / 8)):
         number = array_1_1_to_int(challenge[8*i:8*(i+1)])
         s[8*i:8*(i+1)] = byte_to_array_1_1(aes_s_box[number].astype(uint8))
     return s

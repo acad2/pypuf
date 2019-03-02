@@ -2,10 +2,12 @@
 This module provides several different implementations of arbiter PUF simulations. The linear threshold function array
 model is the core of each simulation class.
 """
-from numpy import sum as np_sum, ones, ndarray, zeros, reshape, broadcast_to, einsum
+from numpy import sum as np_sum, ones, ndarray, zeros, reshape, broadcast_to, einsum, roll
 from numpy import prod, shape, sign, array, transpose, concatenate, swapaxes, sqrt, amax, append, int8
-from numpy.random import RandomState
+from numpy.random.mtrand import RandomState
+
 from pypuf import tools
+from pypuf.tools import substitute_aes
 from pypuf.simulation.base import Simulation
 
 
@@ -333,16 +335,19 @@ class LTFArray(Simulation):
         tools.assert_result_type(result)
         return result
 
-    @staticmethod
-    def transform_aes_substitution(challenges, k):
-        result = array([k * [tools.substitute_aes(c)] for c in challenges]).astype(int8)
+    @classmethod
+    def transform_aes_substitution(cls, challenges, k):
+        cs_shifted = cls.transform_shift(challenges, k)
+        result = array([
+            [substitute_aes(sub_challenge) for sub_challenge in challenge] for challenge in cs_shifted
+        ], dtype=tools.BIT_TYPE)
 
         # Perform atf transform
         result = transpose(
             array([
                 prod(result[:, :, i:], 2)
                 for i in range(shape(result)[2])
-            ], dtype=int8),
+            ], dtype=tools.BIT_TYPE),
             (1, 2, 0)
         )
 
