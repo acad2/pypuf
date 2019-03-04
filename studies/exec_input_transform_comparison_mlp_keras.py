@@ -8,16 +8,16 @@ from pypuf.simulation.arbiter_based.ltfarray import LTFArray
 from numpy.random.mtrand import RandomState
 
 
-CPU_LIMIT = 3
+CPU_LIMIT = 60
 SEED_RANGE = 2 ** 32
-SAMPLES_PER_POINT = 5
+SAMPLES_PER_POINT = 20
 BATCH_SIZE = 1000
 ITERATION_LIMIT = 10000
 PRINT_KERAS = False
-LOG_NAME = 'test_plot'   # ''keras_mlp'
+LOG_NAME = 'keras_mlp'
 
 
-plots = list()
+plots = []
 
 
 def update_plots(_=None):
@@ -26,11 +26,7 @@ def update_plots(_=None):
 
 
 definitions = [
-    [2, 64, (5000, 20000), True, 1, 2, 3, 4],
-    #[4, 64, (200000, 800000), True, None, None, None, None],
-    #[4, 64, (200000, 800000), False, None, None, None, None],
-    #[6, 64, (1000000, 4000000), True, None, None, None, None],
-    #[6, 64, (1000000, 4000000), False, None, None, None, None]
+    [4, 64, (2000, 100000), True, None, None, None, None]
 ]
 
 
@@ -55,12 +51,12 @@ for k, n, (min_CRPs, max_CRPs), preprocess, seed_s, seed_c, seed_m, seed_a in de
     """
 
     for num in range(min_CRPs, max_CRPs + min_CRPs, min_CRPs):
-        #parameters.append([k, n, LTFArray.transform_id, LTFArray.combiner_xor, num])
+        parameters.append([k, n, LTFArray.transform_id, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_atf, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_aes_substitution, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_lightweight_secure, LTFArray.combiner_xor, num])
-        #if n == 64:
-            #parameters.append([k, n, LTFArray.transform_fixed_permutation, LTFArray.combiner_xor, num])
+        if n == 64:
+            parameters.append([k, n, LTFArray.transform_fixed_permutation, LTFArray.combiner_xor, num])
         parameters.append([k, n, LTFArray.transform_random, LTFArray.combiner_xor, num])
 
     for s in range(SAMPLES_PER_POINT):

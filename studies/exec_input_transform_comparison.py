@@ -63,7 +63,7 @@ def main(args):
         params.append([k, n, LTFArray.transform_id, LTFArray.combiner_xor, i])
         params.append([k, n, LTFArray.transform_atf, LTFArray.combiner_xor, i])
         params.append([k, n, LTFArray.transform_aes_substitution, LTFArray.combiner_xor, i])
-        params.append([k, n, LTFArray.transform_lightweight_secure_original, LTFArray.combiner_xor, i])
+        params.append([k, n, LTFArray.transform_lightweight_secure, LTFArray.combiner_xor, i])
         if n == 64:
             params.append([k, n, LTFArray.transform_fixed_permutation, LTFArray.combiner_xor, i])
         params.append([k, n, LTFArray.transform_random, LTFArray.combiner_xor, i])
@@ -82,7 +82,9 @@ def main(args):
             )
             experiments.append(experiment)
 
-    experimenter = Experimenter(experiments=experiments, log_name=log_name)
+    experimenter = Experimenter(result_log_name=log_name, cpu_limit=2)
+    for e in experiments:
+        experiment_id = experimenter.queue(e)
     experimenter.run()
 
 

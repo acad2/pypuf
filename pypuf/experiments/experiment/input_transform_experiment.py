@@ -29,7 +29,7 @@ class InputTransformExperiment(Experiment):
         :param num:             Challenge number, the number of binary inputs (challenges) for the LTF array
         """
         super().__init__(
-            log_name='%s.0x%x_%i_%i_%i' % (
+            progress_log_name='%s.0x%x_%i_%i_%i' % (
                 log_name,
                 seed_instance,
                 k,

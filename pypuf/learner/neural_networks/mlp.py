@@ -56,7 +56,7 @@ class MultiLayerPerceptron(Learner):
             self.training_set.challenges = reshape(self.training_set.challenges, (self.training_set.N, in_shape))
             self.validation_set.challenges = reshape(self.validation_set.challenges, (self.validation_set.N, in_shape))
         """ some regularizers, losses and different structures have to be tried out """
-        regularizer = l1_l2(l1=0.01, l2=0.01)
+        #regularizer = l1_l2(l1=0.01, l2=0.01)
         self.nn = Sequential()
         self.nn.add(Dense(2 ** self.k, input_dim=in_shape, activation='relu'))#, activity_regularizer=regularizer))
         self.nn.add(Dense(2 ** self.k, activation='relu'))#, activity_regularizer=regularizer))
