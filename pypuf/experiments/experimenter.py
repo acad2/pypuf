@@ -202,6 +202,7 @@ class Experimenter(object):
 
             # filter loaded experiments
             if not self.results.empty:
+                known_hashes = [ex.hash for ex in experiments]
                 loaded_experiment_hashes = self.results.loc[:, ['experiment_hash']].values[:, 0]
                 experiments = [ex for ex in experiments if ex.hash not in loaded_experiment_hashes]
                 if loaded_experiment_hashes.size:
@@ -209,7 +210,6 @@ class Experimenter(object):
                     self.jobs_finished = len(loaded_experiment_hashes)
 
                 # check for experiments with results that we don't know
-                known_hashes = [ex.hash for ex in experiments]
                 unknown_experiments = self.results.loc[~self.results['experiment_hash'].isin(known_hashes)]
                 if not unknown_experiments.empty:
                     print('@' * 80)
