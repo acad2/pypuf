@@ -1,4 +1,5 @@
-from pypuf.experiments.experiment.logistic_regression import ExperimentLogisticRegression, Parameters
+from pypuf.experiments.experiment.correlation_attack import ExperimentCorrelationAttack, Parameters as CorrParameters
+from pypuf.experiments.experiment.logistic_regression import ExperimentLogisticRegression, Parameters as LRParameters
 from pypuf.studies.base import Study
 from matplotlib import pyplot
 from seaborn import distplot
@@ -8,9 +9,17 @@ from numpy import arange, ones_like
 class Fig04(Study):
 
     CRPS = 30000
-    SAMPLE_SIZE = 110
+    SAMPLE_SIZE = 500
     LR_TRANSFORMATIONS = ['atf', 'random', 'lightweight_secure', 'fixed_permutation']
+    CORR_TRANSFORMATIONS = ['lightweight_secure']
     SIZE = (64, 4)
+    FIGURE_ORDER = {
+        ('ExperimentLogisticRegression', 'atf'): 0,
+        ('ExperimentLogisticRegression', 'random'): 1,
+        ('ExperimentLogisticRegression', 'lightweight_secure'): 2,
+        ('ExperimentCorrelationAttack', 'lightweight_secure'): 3,
+        ('ExperimentLogisticRegression', 'fixed_permutation'): 4,
+    }
 
     SHUFFLE = True
 
@@ -32,7 +41,7 @@ class Fig04(Study):
                 e.append(
                     ExperimentLogisticRegression(
                         progress_log_prefix=None,
-                        parameters=Parameters(
+                        parameters=LRParameters(
                             seed_instance=314159 + i,
                             seed_model=265358 + i,
                             seed_challenge=979323 + i,
@@ -48,17 +57,48 @@ class Fig04(Study):
                         )
                     )
                 )
+
+        for i in range(self.SAMPLE_SIZE):
+            e.append(
+                ExperimentCorrelationAttack(
+                    progress_log_prefix=None,
+                    parameters=CorrParameters(
+                        seed_instance=314159 + i,
+                        seed_model=265358 + i,
+                        seed_challenge=979323 + i,
+                        seed_distance=846264 + i,
+                        n=n,
+                        k=k,
+                        N=self.CRPS,
+                        lr_iteration_limit=1000,
+                        mini_batch_size=0,
+                        convergence_decimals=2,
+                        shuffle=False,
+                    )
+                )
+            )
         return e
-        # TODO add correlation attack
 
     def plot(self):
-        results = self.experimenter.results
-        groups = results[results['transformation'] != 'id'].groupby(['transformation'])
-        figure, axes = pyplot.subplots(nrows=len(groups), ncols=1)
+        subplots = []
+        experiment_groups = self.experimenter.results.groupby(['experiment'])
+        for experiment, experiment_group in experiment_groups:
+            if experiment == 'ExperimentLogisticRegression':
+                transformation_groups = experiment_group.groupby(['transformation'])
+                for transformation, transformation_group in transformation_groups:
+                    subplots.append((experiment, transformation, transformation_group))
+            else:
+                subplots.append((experiment, 'lightweight_secure', experiment_group))
+
+        subplots.sort(key=lambda x: self.FIGURE_ORDER[(x[0], x[1])])
+        figure, axes = pyplot.subplots(nrows=len(subplots), ncols=1)
         figure.subplots_adjust(hspace=3)
-        figure.set_size_inches(w=5, h=1.5 * len(groups))
-        for axis, (transformation, group_results) in zip(axes, groups):
-            axis.set_title('{} using {:,} CRPs'.format(self.NICE_TRANSFORMATION_NAMES[transformation], self.CRPS))
+        figure.set_size_inches(w=5, h=1.5 * len(subplots))
+        for axis, (experiment, transformation, group_results) in zip(axes, subplots):
+            title = '{} using {:,} CRPs'.format(self.NICE_TRANSFORMATION_NAMES[transformation], self.CRPS)
+            if experiment == 'ExperimentCorrelationAttack':
+                title += ' (Improved Attack)'
+            axis.set_title(title)
             axis.set_xlim([.48, 1])
             distplot(
                 group_results[['accuracy']],
@@ -75,7 +115,7 @@ class Fig04(Study):
                 }
             )
         axes[-1].set_xlabel('accuracy')
-        axes[(len(groups) - 1) // 2].set_ylabel('rel. frequency')
+        axes[(len(subplots) - 1) // 2].set_ylabel('rel. frequency')
         figure.tight_layout()
         figure.savefig('figures/' + self.name() + '.pdf')
         pyplot.close(figure)
