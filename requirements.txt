@@ -6,3 +6,6 @@ scipy~=1.2.0
 astroid~=2.1.0
 matplotlib~=3.0.0
 pandas~=0.24.1
+keras~=2.2.0
+tensorflow~=1.12.0
+seaborn~=0.9.0
