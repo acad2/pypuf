@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  pypuf:
+    build: .
+    environment:
+      CC: "gcc -std=c99"

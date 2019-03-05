@@ -44,6 +44,10 @@ Afterwards, confirm a correct setup by running the tests:
 If you encounter any trouble, please refer to our continuous integration at [travis-ci](https://travis-ci.org/nils-wisiol/pypuf)
 to see a working example or raise an issue on GitHub.
 
+### Docker Installation
+
+
+
 ### Lazy Installations
 
 You can run pypuf installing numpy and scipy from your distribution's repository.
