@@ -82,7 +82,7 @@ def main(args):
             )
             experiments.append(experiment)
 
-    experimenter = Experimenter(result_log_name=log_name, cpu_limit=2)
+    experimenter = Experimenter(result_log_name=log_name, cpu_limit=1)
     for e in experiments:
         experiment_id = experimenter.queue(e)
     experimenter.run()
