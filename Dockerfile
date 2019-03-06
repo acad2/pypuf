@@ -1,7 +1,8 @@
-FROM python:3.7-alpine
+FROM intelpython/intelpython3_full
 
 RUN mkdir /app
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-VOLUME . /app/
+
+CMD python3

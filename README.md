@@ -46,7 +46,10 @@ to see a working example or raise an issue on GitHub.
 
 ### Docker Installation
 
+If you don't want to install any packages onto your system, you can use a docker container to run pypuf.
+To do so, please first install docker and docker-compose. Afterwards, pypuf studies can be run like this:
 
+    docker-compose run pypuf python3 -m study ltf_benchmark
 
 ### Lazy Installations
 
