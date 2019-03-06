@@ -1,8 +1,6 @@
-from platform import processor, uname
-
-from matplotlib.pyplot import subplots
+import sys
+from platform import uname
 from numpy.distutils import cpuinfo
-
 from pypuf.experiments.experiment.base import Experiment
 from os import getpid
 from typing import NamedTuple, Union
@@ -21,19 +19,17 @@ class Parameters(NamedTuple):
     transform: str
     combiner: str
     seed_input: int
-    hostname: Union[str, None]
+    version: Union[str, None]
+    cpu: Union[str, None]
 
 
 class Result(NamedTuple):
     experiment_id: UUID
     pid: int
     measured_time: float
-    cpu: Union[str, None]
 
 
 class Benchmark(Experiment):
-
-    SHUFFLE=True
 
     def __init__(self, progress_log_prefix, parameters):
         super().__init__(progress_log_prefix, parameters)
@@ -52,17 +48,11 @@ class Benchmark(Experiment):
         self.ltf_array.eval(self.set)
 
     def analyze(self):
-        cpu = None
-        try:
-            cpu = cpuinfo.cpu.info[0]['model name']
-        except:
-            pass
 
         return Result(
             experiment_id=self.id,
             pid=getpid(),
             measured_time=self.measured_time,
-            cpu=cpu,
         )
 
 
@@ -72,12 +62,19 @@ class LTFBenchmark(Study):
     TRANSFORMS = ['id', 'atf']
     SIZE = (64, 4)
     SAMPLE_SIZE = 100
+    SHUFFLE = True
 
     def name(self):
         return 'ltf_benchmark'
 
     def experiments(self):
         (n, k) = self.SIZE
+        cpu = None
+        try:
+            cpu = cpuinfo.cpu.info[0]['model name']
+        except:
+            pass
+
         return [
             Benchmark(
                 progress_log_prefix=None,
@@ -88,7 +85,8 @@ class LTFBenchmark(Study):
                     transform=transform,
                     combiner='xor',
                     seed_input=314159 + i,
-                    hostname=uname().node,
+                    version=sys.version,
+                    cpu=cpu,
                 )
             )
             for N in self.Ns
@@ -97,9 +95,9 @@ class LTFBenchmark(Study):
         ]
 
     def plot(self):
-        results = self.experimenter.results[['cpu', 'hostname', 'transform', 'N', 'measured_time']]
+        results = self.experimenter.results[['cpu', 'version', 'transform', 'N', 'measured_time']]
         groups = results.groupby(['transform'])
 
         for transform, group in groups:
-            figure = relplot(x='N', y='measured_time', hue='cpu', style='hostname', kind='line', data=group)
+            figure = relplot(x='N', y='measured_time', hue='cpu', style='version', kind='line', data=group)
             figure.savefig('figures/%s-%s.pdf' % (self.name(), transform))
