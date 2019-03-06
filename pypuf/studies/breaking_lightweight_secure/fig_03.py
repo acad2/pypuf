@@ -24,7 +24,7 @@ from pypuf.studies.base import Study
 
 class BreakingLightweightSecureFig03(Study):
 
-    SAMPLES_PER_POINT = 10
+    SAMPLES_PER_POINT = 100
     SUCCESS_THRESHOLD = .7
     SHUFFLE = True
 
