@@ -1,4 +1,4 @@
-version: '3.2'
+version: '2'
 
 services:
   pypuf:
@@ -6,6 +6,4 @@ services:
     environment:
       CC: "gcc -std=c99"
     volumes:
-      - type: bind
-        source: .
-        target: /app/
+      - .:/app/
